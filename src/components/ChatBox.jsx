@@ -1251,7 +1251,7 @@ export default function ChatApp() {
       const updatedUsers = users.map((user) => {
         const lastSeen = new Date(user.lastSeen);
         const diffMs = now - lastSeen;
-        const isOnline = diffMs < 60000 && user.online; // 1 min
+        const isOnline = diffMs < 10000 && user.online; // 1 min
         return { ...user, online: isOnline };
       });
 
