@@ -1,3 +1,137 @@
+// import React, { useState, useEffect, useRef } from "react";
+// import {
+//   collection,
+//   addDoc,
+//   onSnapshot,
+//   serverTimestamp,
+//   orderBy,
+//   query,
+// } from "firebase/firestore";
+// import { db } from "../firebaseConfig";
+
+// export default function ChatApp() {
+//   const [message, setMessage] = useState("");
+//   const [messages, setMessages] = useState([]);
+//   const [username, setUsername] = useState("");
+//   const [replyTo, setReplyTo] = useState(null);
+//   const bottomRef = useRef(null);
+
+//   useEffect(() => {
+//     let name = localStorage.getItem("chat_username");
+//     if (!name || name === "Guest") {
+//       name = prompt("👋 Aap ka naam kya hai?");
+//       if (!name) name = "Guest";
+//       localStorage.setItem("chat_username", name);
+//     }
+//     setUsername(name);
+//   }, []);
+
+//   useEffect(() => {
+//     const q = query(collection(db, "messages"), orderBy("timestamp"));
+//     const unsub = onSnapshot(q, (snapshot) => {
+//       const msgs = snapshot.docs.map((doc) => ({
+//         id: doc.id,
+//         ...doc.data(),
+//       }));
+//       setMessages(msgs);
+//       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+//     });
+//     return () => unsub();
+//   }, []);
+
+//   const sendMessage = async () => {
+//     if (!message.trim()) return;
+//     await addDoc(collection(db, "messages"), {
+//       text: message,
+//       author: username,
+//       timestamp: serverTimestamp(),
+//       replyTo: replyTo ? { id: replyTo.id, text: replyTo.text, author: replyTo.author } : null,
+//     });
+//     setMessage("");
+//     setReplyTo(null);
+//   };
+
+//   const handleKeyPress = (e) => {
+//     if (e.key === "Enter") sendMessage();
+//   };
+
+//   return (
+//     <div className="h-screen bg-black text-white flex flex-col w-full">
+//       <div className="p-4 bg-blue-700 font-bold text-lg text-center">
+//         Welcome, {username} 🚀
+//       </div>
+
+//       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-3">
+//         {messages.map((msg) => {
+//           const isMe = msg.author === username;
+//           return (
+//             <div
+//               key={msg.id}
+//               className={`flex w-full ${isMe ? "justify-end" : "justify-start"}`}
+//             >
+//               <div
+//                 className={`p-3 rounded-lg shadow text-sm max-w-[75%] ${
+//                   isMe
+//                     ? "bg-blue-600 text-right text-white"
+//                     : "bg-gray-700 text-left text-white"
+//                 }`}
+//               >
+//                 <div className="text-xs font-bold text-gray-300 mb-1">
+//                   {msg.author}
+//                 </div>
+
+//                 {msg.replyTo && (
+//                   <div className="text-xs italic text-gray-400 border-l-2 pl-2 mb-1 border-gray-500">
+//                     Reply to {msg.replyTo.author}: "{msg.replyTo.text}"
+//                   </div>
+//                 )}
+
+//                 <div>{msg.text}</div>
+
+//                 <button
+//                   onClick={() => setReplyTo(msg)}
+//                   className="text-[10px] mt-1 text-blue-200 hover:underline"
+//                 >
+//                   Reply
+//                 </button>
+//               </div>
+//             </div>
+//           );
+//         })}
+//         <div ref={bottomRef}></div>
+//       </div>
+
+//       {replyTo && (
+//         <div className="bg-gray-800 text-xs text-gray-300 p-2 px-4 flex items-center justify-between">
+//           <span>
+//             Replying to {replyTo.author}: <span className="italic">"{replyTo.text}"</span>
+//           </span>
+//           <button onClick={() => setReplyTo(null)} className="text-red-400 hover:underline">
+//             Cancel
+//           </button>
+//         </div>
+//       )}
+
+//       <div className="p-4 border-t border-gray-700 flex gap-2">
+//         <input
+//           type="text"
+//           value={message}
+//           onChange={(e) => setMessage(e.target.value)}
+//           onKeyDown={handleKeyPress}
+//           placeholder="Type your message..."
+//           className="flex-1 p-2 rounded bg-gray-900 text-white outline-none"
+//         />
+//         <button
+//           onClick={sendMessage}
+//           className="bg-blue-600 px-4 py-2 rounded hover:bg-blue-700"
+//         >
+//           Send
+//         </button>
+//       </div>
+//     </div>
+//   );
+// }
+//
 import React, { useState, useEffect, useRef } from "react";
 import {
   collection,
@@ -12,14 +146,42 @@ import { db } from "../firebaseConfig";
 export default function ChatApp() {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
+  const [username, setUsername] = useState("");
   const [replyTo, setReplyTo] = useState(null);
-  const [highlightedMessageId, setHighlightedMessageId] = useState(null); // NEW
+  const [isTyping, setIsTyping] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
+  const [lastSeen, setLastSeen] = useState(null);
   const bottomRef = useRef(null);
-  const messageRefs = useRef({}); // NEW: for scrolling
+  const typingTimeout = useRef(null);
+
+  useEffect(() => {
+    let name = localStorage.getItem("chat_username");
+    if (!name || name === "Guest") {
+      name = prompt("👋 Aap ka naam kya hai?");
+      if (!name) name = "Guest";
+      localStorage.setItem("chat_username", name);
+    }
+    setUsername(name);
+    setIsOnline(true);
+
+    window.addEventListener("beforeunload", () => {
+      localStorage.setItem("last_seen", new Date().toISOString());
+    });
+
+    const storedLastSeen = localStorage.getItem("last_seen");
+    if (storedLastSeen) {
+      setLastSeen(new Date(storedLastSeen));
+    }
+
+    return () => {
+      setIsOnline(false);
+      localStorage.setItem("last_seen", new Date().toISOString());
+    };
+  }, []);
 
   useEffect(() => {
     const q = query(collection(db, "messages"), orderBy("timestamp"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsub = onSnapshot(q, (snapshot) => {
       const msgs = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
@@ -27,114 +189,146 @@ export default function ChatApp() {
       setMessages(msgs);
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     });
-    return () => unsubscribe();
+    return () => unsub();
   }, []);
 
   const sendMessage = async () => {
     if (!message.trim()) return;
     await addDoc(collection(db, "messages"), {
       text: message,
-      author: "Guest",
+      author: username,
       timestamp: serverTimestamp(),
-      replyTo: replyTo ? replyTo.id : null,
+      replyTo: replyTo ? { id: replyTo.id, text: replyTo.text, author: replyTo.author } : null,
     });
     setMessage("");
     setReplyTo(null);
+    setIsTyping(false);
   };
 
   const handleKeyPress = (e) => {
     if (e.key === "Enter") sendMessage();
   };
 
-  const handleReply = (msg) => {
-    setReplyTo(msg);
-  };
-
-  const handleDoubleClick = (replyToId) => {
-    if (!replyToId) return;
-
-    setHighlightedMessageId(replyToId);
-
-    // Scroll into view
-    const el = messageRefs.current[replyToId];
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-
-    // Remove highlight after 2 seconds
-    setTimeout(() => {
-      setHighlightedMessageId(null);
-    }, 2000);
+  const handleTyping = (e) => {
+    setMessage(e.target.value);
+    setIsTyping(true);
+    clearTimeout(typingTimeout.current);
+    typingTimeout.current = setTimeout(() => {
+      setIsTyping(false);
+    }, 1000);
   };
 
   return (
-    <div className="h-screen bg-black text-white flex flex-col">
+    <div className="fixed inset-0 bg-black text-white flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="p-4 bg-blue-700 font-bold text-lg text-center">Simple Chat App</div>
+      <div className="relative p-4 bg-blue-700 font-bold text-lg text-center shrink-0">
+        Welcome, {username} 🚀
+        <div className="absolute top-1 right-2 text-xs">
+          {isOnline ? (
+            <span className="text-green-300">🟢 Online</span>
+          ) : lastSeen ? (
+            <span className="text-gray-300">
+              Last seen at {new Date(lastSeen).toLocaleTimeString()}
+            </span>
+          ) : null}
+        </div>
+      </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      {/* Floating Emoji */}
+      {isOnline && (
+        <div className="absolute bottom-20 right-4 text-3xl animate-bounce">💬</div>
+      )}
+
+      {/* Messages Area */}
+      <div
+        className="flex-1 overflow-y-auto px-2 py-4 space-y-3 no-scrollbar"
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+      >
         {messages.map((msg) => {
-          const isMine = msg.author === "Guest";
-          const repliedMsg = messages.find((m) => m.id === msg.replyTo);
-
+          const isMe = msg.author === username;
           return (
             <div
               key={msg.id}
-              ref={(el) => (messageRefs.current[msg.id] = el)} // Track DOM refs
-              onClick={() => handleReply(msg)}
-              onDoubleClick={() => handleDoubleClick(msg.replyTo)}
-              className={`max-w-xs break-words p-3 rounded-lg shadow-md cursor-pointer relative transition-all duration-300 ${
-                isMine ? "bg-blue-600 self-end ml-auto text-right" : "bg-gray-800 self-start mr-auto"
-              } ${highlightedMessageId === msg.id ? "ring-2 ring-yellow-400 scale-105" : ""}`}
+              className={`flex w-full ${isMe ? "justify-end" : "justify-start"}`}
             >
-              {/* Show reply context */}
-              {msg.replyTo && repliedMsg && (
-                <div className="text-xs text-gray-300 border-l-2 border-blue-400 pl-2 mb-1 italic bg-gray-700 rounded p-1">
-                  Replying to: <span className="text-white font-semibold">{repliedMsg.text}</span>
-                </div>
-              )}
-              <div className="text-xs text-gray-400 mb-1">{msg.author}</div>
-              <div>{msg.text}</div>
+              <div
+                className={`p-3 rounded-xl shadow-md text-sm whitespace-pre-wrap break-words max-w-[80%] ${
+                  isMe
+                    ? "bg-blue-600 text-right text-white"
+                    : "bg-gray-700 text-left text-white"
+                }`}
+              >
+                <div className="text-xs font-bold text-gray-300 mb-1">{msg.author}</div>
+
+                {msg.replyTo && (
+                  <div className="text-xs italic text-gray-400 border-l-2 pl-2 mb-1 border-gray-500">
+                    Reply to {msg.replyTo.author}: "{msg.replyTo.text}"
+                  </div>
+                )}
+
+                <div>{msg.text}</div>
+
+                <button
+                  onClick={() => setReplyTo(msg)}
+                  className="text-[10px] mt-1 text-blue-200 hover:underline"
+                >
+                  Reply
+                </button>
+              </div>
             </div>
           );
         })}
-        <div ref={bottomRef} />
+        <div ref={bottomRef}></div>
       </div>
 
-      {/* Reply Info Bar */}
+      {/* Typing Indicator */}
+      {isTyping && (
+        <div className="text-gray-400 text-xs px-4 pb-1">Typing...</div>
+      )}
+
+      {/* Reply Info */}
       {replyTo && (
-        <div className="bg-gray-800 p-2 text-sm flex justify-between items-center">
-          <div>
-            <span className="text-gray-400">Replying to: </span>
-            <span className="italic text-white">{replyTo.text}</span>
-          </div>
-          <button
-            onClick={() => setReplyTo(null)}
-            className="text-red-400 hover:text-red-600 ml-4"
-          >
-            ✕
+        <div className="bg-gray-800 text-xs text-gray-300 p-2 px-4 flex items-center justify-between shrink-0">
+          <span>
+            Replying to {replyTo.author}: <span className="italic">"{replyTo.text}"</span>
+          </span>
+          <button onClick={() => setReplyTo(null)} className="text-red-400 hover:underline">
+            Cancel
           </button>
         </div>
       )}
 
       {/* Input */}
-      <div className="p-4 border-t border-gray-700 flex gap-2">
-        <input
-          type="text"
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={handleKeyPress}
-          placeholder="Type your message..."
-          className="flex-1 p-2 rounded bg-gray-900 text-white outline-none"
-        />
-        <button
-          onClick={sendMessage}
-          className="bg-blue-600 px-4 py-2 rounded hover:bg-blue-700"
-        >
-          Send
-        </button>
+      <div className="p-3 border-t border-gray-700 bg-black shrink-0">
+        <div className="flex items-center gap-2 bg-gray-900 rounded-lg px-3 py-2 w-full">
+          <input
+            type="text"
+            value={message}
+            onChange={handleTyping}
+            onKeyDown={handleKeyPress}
+            placeholder="Type your message..."
+            className="flex-1 bg-transparent text-white outline-none placeholder-gray-400 text-sm"
+          />
+          <button
+            onClick={sendMessage}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm"
+          >
+            Send
+          </button>
+        </div>
       </div>
+
+      <style>{`
+        .no-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+      `}</style>
     </div>
   );
 }
+
+
+
+
+
+
